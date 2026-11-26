@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+port.txt
+server.out.log
+server.err.log
+.venv/
