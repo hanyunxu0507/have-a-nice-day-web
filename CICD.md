@@ -1,104 +1,76 @@
 # CI/CD 说明文档
 
-本文档说明本项目使用的 GitHub Actions 工作流，以及你需要手动完成的步骤。
+本项目包含两个阶段的成果：
 
-## 已添加的文件
+1. 初始静态网页 `index.html`（`Have a nice day!`），由 `.github/workflows/ci-cd.yml` 验证并发布到 GitHub Pages。
+2. 当前 application：Flask 前端 + SQLite 后端，数据放在 `data/` 文件夹，由 `.github/workflows/data-update.yml` 自动更新数据库。
 
-- `.github/workflows/ci-cd.yml`：GitHub Actions 工作流
-- `.gitignore`：忽略本地运行时产生的临时文件
+## 当前 application 的 CI/CD 工作流
 
-## 工作流做什么
+工作流文件：`/.github/workflows/data-update.yml`
 
-### CI（持续集成）
+### Trigger
 
-在 `push` 或 `pull_request` 到 `main` / `master` 分支时自动运行，检查：
+工作流在以下情况下触发：
 
-1. 检出代码
-2. 安装 Python
-3. 用 `py_compile` 检查 `app.py` 和 `serve.py` 语法
-4. 确认 `index.html` 存在且包含文字 `Have a nice day!`
-5. 启动本地 HTTP 服务，并用 `curl` 确认页面能返回 200
+- 有文件被推送到 `data/` 文件夹下的任意路径（`data/**`）
+- 在 Actions 页面手动点击 **Run workflow**（`workflow_dispatch`）
 
-### CD（持续部署）
+### Actions / Steps
 
-当代码被推送到 `main` 或 `master` 分支，并且 CI 通过后：
+工作流运行在 `ubuntu-latest`，步骤如下：
 
-1. 只把 `index.html` 复制到 `site/` 目录作为发布内容
-2. 使用官方 `actions/configure-pages`、`actions/upload-pages-artifact`、`actions/deploy-pages` 发布到 GitHub Pages
-3. 部署成功后，Actions 页面会输出 Pages 访问地址
+1. **Checkout**：检出仓库代码。
+2. **Set up Python 3.11**：使用 `actions/setup-python@v5` 安装 Python 3.11。
+3. **Install dependencies**：升级 pip，并根据 `requirements.txt` 安装 `Flask` 和 `pandas`。`sqlite3` 是 Python 标准库，不需要额外安装，工作流中仅验证可导入。
+4. **Run clean_and_merge**：执行 `python clean_and_merge.py`，读取 `data/orders.csv` 和 `data/customers.csv`，去重、换算 `amount_cny`、按 `customer_id` 合并，并重建 `merged_data.db`。
+5. **Commit updated database**：配置 bot 身份，把更新后的 `merged_data.db` 提交并推送回仓库；如果数据库没有变化，则跳过提交。
 
-你也可以在项目根目录的 Actions 标签页中手动点击 **Run workflow** 触发一次。
+因为提交的是 `merged_data.db`，路径不匹配 `data/**`，所以不会造成无限循环触发。
 
-## 你需要手动完成的操作
+### Flask 前端
 
-当前这台机器还没有 Git 仓库、GitHub 远程仓库和 GitHub 登录凭据，所以我只能先在本地提交，不能替你推送到 GitHub。请你按下面步骤操作：
+- 入口：`app.py`
+- 主页 `/`：展示 `merged_orders` 表和 `region_summary` 表
+- 接口 `/api/data`：返回两张表的 JSON 数据
+- 页面每 3 秒通过 JavaScript `fetch('/api/data')` 自动刷新，数据库变化后前端会自动更新
 
-### 1. 在 GitHub 上创建仓库
-
-登录 GitHub，点击 **New repository**，例如命名为：
-
-```text
-have-a-nice-day-web
-```
-
-创建时不要勾选初始化 README / .gitignore / license，保持空仓库即可（如果已经勾选，也没关系，后面按提示处理冲突即可）。
-
-### 2. 在本地关联远程仓库
-
-在本项目目录打开终端，执行（把 URL 换成你自己的）：
+本地运行：
 
 ```powershell
-git remote add origin https://github.com/<你的用户名>/have-a-nice-day-web.git
+cd "c:\Users\26430\CodeBuddy\20261126153955"
+python clean_and_merge.py
+python app.py
 ```
 
-如果你习惯用 SSH，并且已经配置好 SSH key，可以用：
+然后访问 `http://127.0.0.1:5000/`。
 
-```powershell
-git remote set-url origin git@github.com:<你的用户名>/have-a-nice-day-web.git
-```
+## 可直接填写到作业里的英文描述
 
-### 3. 配置 GitHub 认证
+### Trigger
 
-任选一种：
+The workflow is triggered when any file under the `data/` folder is pushed to the repository. It can also be triggered manually from the GitHub Actions tab using `workflow_dispatch`.
 
-- **GitHub CLI（推荐）**
-  ```powershell
-  winget install --id GitHub.cli
-  gh auth login
-  ```
-- **HTTPS + Personal Access Token**：在 GitHub → Settings → Developer settings → Personal access tokens 生成带 `repo` 和 `workflow` 权限的 token，推送时用它作为密码。
-- **SSH key**：生成并添加公钥到 GitHub → Settings → SSH and GPG keys，然后信任主机：
-  ```powershell
-  ssh-keyscan github.com >> "$env:USERPROFILE\.ssh\known_hosts"
-  ```
+### Actions / Main steps
 
-> 我不会在对话中索要你的密码、token 或私钥。
+1. Check out the repository.
+2. Set up Python 3.11.
+3. Install the required packages from `requirements.txt` (`Flask` and `pandas`); `sqlite3` is part of the Python standard library and is verified by import.
+4. Run `clean_and_merge.py` to clean duplicates, convert amounts to CNY, merge orders with customers on `customer_id`, and rebuild `merged_data.db`.
+5. Commit and push the updated `merged_data.db` back to GitHub if it changed.
 
-### 4. 推送代码
+The Flask frontend connects to the same SQLite database. Its main page shows the merged orders table and the average `amount_cny` per region, and it refreshes automatically every 3 seconds by calling `/api/data`.
 
-```powershell
-git push -u origin main
-```
+## 初始静态网页工作流（保留）
 
-### 5. 启用 GitHub Pages
+文件：`.github/workflows/ci-cd.yml`
 
-进入仓库页面：
+- Trigger：`push` / `pull_request` 到 `main` 或 `master`，以及手动触发
+- CI：检查 Python 语法、验证 `index.html` 内容、冒烟测试本地 HTTP 服务
+- CD：把 `index.html` 发布到 GitHub Pages
 
-1. 点击 **Settings**
-2. 左侧选择 **Pages**
-3. **Build and deployment → Source** 选择 **GitHub Actions**
+## 当前 Git 状态
 
-### 6. 查看结果
-
-- 打开仓库的 **Actions** 标签页，确认工作流是绿色 successful
-- 部署成功后，访问地址格式为：
-  ```text
-  https://<你的用户名>.github.io/have-a-nice-day-web/
-  ```
-  具体地址以 Actions 中 `deploy` 作业输出的 `page_url` 为准。
-
-## 常见问题
-
-- **CI 失败，提示端口被占用**：工作流里用的是 GitHub 临时 runner，不会有本机端口冲突；如果仍失败，请把 Actions 日志发给我。
-- **Pages 404**：确认第 5 步 Source 已选成 GitHub Actions，并且 `main` 分支的 workflow 已成功运行。
-- **推送被拒绝**：通常是认证失败或远程仓库不是空的；按终端提示处理，或把错误信息发给我。
+- 远程仓库：`https://github.com/hanyunxu0507/have-a-nice-day-web.git`
+- 分支：`main`
+- 已启用 GitHub Pages（Source = GitHub Actions）

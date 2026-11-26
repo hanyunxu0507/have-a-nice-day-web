@@ -1,0 +1,9 @@
+customer_id,customer_name,region
+C001,Alice,North
+C002,Bob,South
+C003,Carol,East
+C001,Alice,North
+C004,David,West
+C005,Eva,North
+C005,Eva,North
+C006,Frank,East
